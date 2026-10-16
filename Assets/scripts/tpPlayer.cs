@@ -7,6 +7,7 @@ public class tpPlayer : MonoBehaviour
     public CharacterController playerCharacterController;
 
     [SerializeField] private Transform playerCamera;
+    [SerializeField] private Transform playerVisual;
 
     public Light sunLight;
     public LayerMask shadowLayers = ~0;
@@ -16,13 +17,20 @@ public class tpPlayer : MonoBehaviour
     public float gravity = -9.81f;
     public float jumpHeight = 5.0f;
 
+    [SerializeField] private float walkBobHeight = 0.05f;
+    [SerializeField] private float walkBobSpeed = 10f;
+    [SerializeField] private float airTiltAngle = 20f;
+    [SerializeField] private float animationSmoothing = 10f;
+
     private InputAction playerMoveAction;
     private InputAction playerJumpAction;
 
     private Vector2 playerMoveAmount;
-    private float playerRotateDampening = 10.0f;
+    private float playerRotateDampening = 0.1f;
     private float turnSmoothingVelocity;
     private float verticalVelocity;
+    private Vector3 visualStartPosition;
+    private Quaternion visualStartRotation;
 
     private bool hasEnteredShadow;
     private bool gameOver;
@@ -50,6 +58,21 @@ public class tpPlayer : MonoBehaviour
 
     private void Awake()
     {
+        if (playerVisual == null)
+        {
+            MeshRenderer visualRenderer = GetComponentInChildren<MeshRenderer>();
+            if (visualRenderer != null && visualRenderer.transform != transform)
+            {
+                playerVisual = visualRenderer.transform;
+            }
+        }
+
+        if (playerVisual != null)
+        {
+            visualStartPosition = playerVisual.localPosition;
+            visualStartRotation = playerVisual.localRotation;
+        }
+
         if (InputActions == null)
         {
             return;
@@ -75,6 +98,7 @@ public class tpPlayer : MonoBehaviour
         Jump();
         PlayerMoveAndRotate();
         CheckForShadow();
+        AnimateVisual();
     }
 
     private void CheckForShadow()
@@ -175,5 +199,34 @@ public class tpPlayer : MonoBehaviour
         {
             playerCharacterController.Move(verticalMove);
         }
+    }
+
+    private void AnimateVisual()
+    {
+        if (playerVisual == null)
+        {
+            return;
+        }
+
+        bool grounded = playerCharacterController.isGrounded && verticalVelocity <= 0f;
+        bool walking = grounded && playerMoveAmount.sqrMagnitude > 0.01f;
+        float bob = walking
+            ? Mathf.Sin(Time.time * walkBobSpeed) * walkBobHeight
+            : 0f;
+        float targetTilt = grounded
+            ? 0f
+            : verticalVelocity > 0f ? -airTiltAngle : airTiltAngle;
+        float blend = 1f - Mathf.Exp(-animationSmoothing * Time.deltaTime);
+
+        playerVisual.localPosition = Vector3.Lerp(
+            playerVisual.localPosition,
+            visualStartPosition + Vector3.up * bob,
+            blend);
+
+        Quaternion targetRotation = visualStartRotation * Quaternion.Euler(targetTilt, 0f, 0f);
+        playerVisual.localRotation = Quaternion.Slerp(
+            playerVisual.localRotation,
+            targetRotation,
+            blend);
     }
 }
