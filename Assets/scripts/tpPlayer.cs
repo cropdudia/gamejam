@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Cinemachine;
+using UnityEngine.UI;
 
 public class tpPlayer : MonoBehaviour
 {
@@ -8,10 +10,16 @@ public class tpPlayer : MonoBehaviour
 
     [SerializeField] private Transform playerCamera;
     [SerializeField] private Transform playerVisual;
+    [SerializeField] private Image healthOverlayImage;
 
     public Light sunLight;
     public LayerMask shadowLayers = ~0;
     public LayerMask fireLayers;
+    public float playerHealth = 100f;
+    public float maxHealth = 100f;
+    public float sunlightDamagePerSecond = 10f;
+    public float shadowRegenerationPerSecond = 5f;
+
 
     public float playerWalkSpeed = 5.0f;
     public float gravity = -9.81f;
@@ -21,6 +29,10 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private float walkBobSpeed = 10f;
     [SerializeField] private float airTiltAngle = 20f;
     [SerializeField] private float animationSmoothing = 10f;
+    [SerializeField] private float lowHealthZoom = 12f;
+    [SerializeField] private float lowHealthShake = 0.15f;
+    [SerializeField] private float cameraEffectSmoothing = 3f;
+    [SerializeField] private float cameraShakeFrequency = 20f;
 
     private InputAction playerMoveAction;
     private InputAction playerJumpAction;
@@ -31,8 +43,12 @@ public class tpPlayer : MonoBehaviour
     private float verticalVelocity;
     private Vector3 visualStartPosition;
     private Quaternion visualStartRotation;
+    private CinemachineCamera cinemachineCamera;
+    private CinemachineOrbitalFollow orbitalFollow;
+    private float startingFieldOfView;
+    private Vector3 startingTargetOffset;
+    private Color healthOverlayBaseColor;
 
-    private bool hasEnteredShadow;
     private bool gameOver;
 
     private void OnEnable()
@@ -48,16 +64,53 @@ public class tpPlayer : MonoBehaviour
 
     private void OnDisable()
     {
-        if (InputActions == null)
+        if (InputActions != null)
         {
-            return;
+            InputActions.FindActionMap("Player").Disable();
         }
 
-        InputActions.FindActionMap("Player").Disable();
+        if (cinemachineCamera != null)
+        {
+            var lens = cinemachineCamera.Lens;
+            lens.FieldOfView = startingFieldOfView;
+            cinemachineCamera.Lens = lens;
+        }
+
+        if (orbitalFollow != null)
+        {
+            orbitalFollow.TargetOffset = startingTargetOffset;
+        }
+
     }
 
     private void Awake()
     {
+        if (playerCamera != null)
+        {
+            cinemachineCamera = playerCamera.GetComponent<CinemachineCamera>();
+            orbitalFollow = playerCamera.GetComponent<CinemachineOrbitalFollow>();
+
+            if (cinemachineCamera != null)
+            {
+                startingFieldOfView = cinemachineCamera.Lens.FieldOfView;
+            }
+
+            if (orbitalFollow != null)
+            {
+                startingTargetOffset = orbitalFollow.TargetOffset;
+            }
+        }
+
+        if (cinemachineCamera == null)
+        {
+            Debug.LogWarning("Health zoom needs a Cinemachine Camera on Player Camera.", this);
+        }
+
+        if (orbitalFollow == null)
+        {
+            Debug.LogWarning("Health shake needs Cinemachine Orbital Follow on Player Camera.", this);
+        }
+
         if (playerVisual == null)
         {
             MeshRenderer visualRenderer = GetComponentInChildren<MeshRenderer>();
@@ -73,6 +126,11 @@ public class tpPlayer : MonoBehaviour
             visualStartRotation = playerVisual.localRotation;
         }
 
+        if (healthOverlayImage != null)
+        {
+            healthOverlayBaseColor = healthOverlayImage.color;
+        }
+
         if (InputActions == null)
         {
             return;
@@ -84,6 +142,10 @@ public class tpPlayer : MonoBehaviour
 
     private void Update()
     {
+        playerHealth = Mathf.Clamp(playerHealth, 0f, Mathf.Max(0f, maxHealth));
+        UpdateCameraEffects();
+        UpdateHealthOverlay();
+
         if (gameOver ||
             playerMoveAction == null ||
             playerJumpAction == null ||
@@ -101,9 +163,53 @@ public class tpPlayer : MonoBehaviour
         AnimateVisual();
     }
 
+    private void UpdateHealthOverlay()
+    {
+        if (healthOverlayImage == null)
+        {
+            return;
+        }
+
+        float healthLoss = 1f - Mathf.Clamp01(playerHealth / Mathf.Max(0.01f, maxHealth));
+        Color overlayColor = healthOverlayBaseColor;
+        overlayColor.a *= healthLoss;
+        healthOverlayImage.color = overlayColor;
+    }
+
+    private void UpdateCameraEffects()
+    {
+        float healthLoss = 1f - Mathf.Clamp01(playerHealth / Mathf.Max(0.01f, maxHealth));
+        float blend = 1f - Mathf.Exp(-cameraEffectSmoothing * Time.unscaledDeltaTime);
+
+        if (cinemachineCamera != null)
+        {
+            var lens = cinemachineCamera.Lens;
+            lens.FieldOfView = Mathf.Lerp(
+                lens.FieldOfView,
+                startingFieldOfView - lowHealthZoom * healthLoss,
+                blend);
+            cinemachineCamera.Lens = lens;
+        }
+
+        if (orbitalFollow != null)
+        {
+            float shakeTime = Time.unscaledTime * cameraShakeFrequency;
+            Vector3 shakeOffset = new Vector3(
+                (Mathf.PerlinNoise(shakeTime, 0f) - 0.5f) * 2f,
+                (Mathf.PerlinNoise(0f, shakeTime) - 0.5f) * 2f,
+                0f) * (lowHealthShake * healthLoss);
+
+            orbitalFollow.TargetOffset = Vector3.Lerp(
+                orbitalFollow.TargetOffset,
+                startingTargetOffset + shakeOffset,
+                blend);
+        }
+
+    }
+
     private void CheckForShadow()
     {
-        if (sunLight == null || !playerCharacterController.isGrounded)
+        if (sunLight == null)
         {
             return;
         }
@@ -122,27 +228,57 @@ public class tpPlayer : MonoBehaviour
             shadowLayers,
             QueryTriggerInteraction.Ignore);
 
-        if (!hasEnteredShadow && isInShadow)
+        if (!isInShadow)
         {
-            hasEnteredShadow = true;
-            Debug.Log("Player entered shadow.", this);
+            playerHealth = Mathf.Max(
+                0f,
+                playerHealth - sunlightDamagePerSecond * Time.deltaTime);
+
+            if (playerHealth <= 0f)
+            {
+                gameOver = true;
+                Time.timeScale = 0f;
+                Debug.Log("Game over: player ran out of health in sunlight.", this);
+            }
         }
-        else if (hasEnteredShadow && !isInShadow)
+        else
         {
-            gameOver = true;
-            Time.timeScale = 0f;
-            Debug.Log("Game over: player left the shadow.", this);
+            playerHealth = Mathf.Min(
+                maxHealth,
+                playerHealth + shadowRegenerationPerSecond * Time.deltaTime);
         }
     }
 
     private void OnGUI()
     {
+        DrawHealthBar();
+
         if (gameOver)
         {
             GUI.Box(
                 new Rect(Screen.width / 2 - 180, Screen.height / 2 - 50, 360, 100),
-                "GAME OVER\nYou left the shadow.");
+                "GAME OVER\nYou ran out of health in sunlight.");
         }
+    }
+
+    private void DrawHealthBar()
+    {
+        float safeMaxHealth = Mathf.Max(0.01f, maxHealth);
+        float healthRatio = Mathf.Clamp01(playerHealth / safeMaxHealth);
+        Rect barRect = new Rect(20f, 20f, 200f, 20f);
+
+        GUI.Box(barRect, GUIContent.none);
+
+        Color previousColor = GUI.color;
+        GUI.color = Color.green;
+        GUI.DrawTexture(
+            new Rect(barRect.x + 2f, barRect.y + 2f, (barRect.width - 4f) * healthRatio, barRect.height - 4f),
+            Texture2D.whiteTexture);
+        GUI.color = previousColor;
+
+        GUI.Label(
+            new Rect(barRect.x, barRect.y + barRect.height + 2f, barRect.width, 20f),
+            $"Health: {Mathf.Clamp(playerHealth, 0f, safeMaxHealth):0} / {safeMaxHealth:0}");
     }
 
     private void Jump()
