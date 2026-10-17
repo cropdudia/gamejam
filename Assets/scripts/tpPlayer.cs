@@ -76,7 +76,7 @@ public class tpPlayer : MonoBehaviour
             return;
         }
 
-        InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
+        //InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
         InputActions.FindActionMap("Player").Enable();
     }
 
