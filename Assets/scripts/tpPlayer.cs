@@ -62,6 +62,12 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private AudioSource heartbeatSource;
     [SerializeField, Range(0f, 1f)] private float heartbeatMaxVolume = 1f;
 
+    [Header("Character Effects")]
+    [SerializeField] private Color sunAbilityEffectColor = new Color(0.2f, 1f, 0.25f, 1f);
+    [SerializeField, Min(0f)] private float sunAbilityLightRange = 5f;
+    [SerializeField, Min(0f)] private float sunAbilityLightIntensity = 2f;
+    [SerializeField, Min(0f)] private float smokeParticlesPerDamage = 0.5f;
+
     [Header("Moving Platforms")]
     [SerializeField] private LayerMask platformLayers = ~0;
     [SerializeField] private float platformCheckDistance = 50.3f; // how far below the feet to look
@@ -87,6 +93,14 @@ public class tpPlayer : MonoBehaviour
     private Vector3 startingTargetOffset;
     private Color healthOverlayBaseColor;
     private readonly List<VisualMaterialState> visualMaterialStates = new List<VisualMaterialState>();
+    private ParticleSystem sunAbilityParticles;
+    private ParticleSystem damageSmokeParticles;
+    private Light sunAbilityLight;
+    private Material sunAbilityParticleMaterial;
+    private Material damageSmokeParticleMaterial;
+    private float lastObservedHealth;
+    private float pendingSmokeParticles;
+    private bool sunAbilityEffectActive;
 
     private bool isRespawning;
     private bool checkpointCardActive;
@@ -116,7 +130,7 @@ public class tpPlayer : MonoBehaviour
             return;
         }
 
-        InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
+        //InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
         playerActionMap = InputActions.FindActionMap("Player");
         playerActionMap.Enable();
     }
@@ -142,6 +156,7 @@ public class tpPlayer : MonoBehaviour
             orbitalFollow.TargetOffset = startingTargetOffset;
         }
 
+        SetSunAbilityEffect(false);
     }
 
     private void Awake()
@@ -156,6 +171,7 @@ public class tpPlayer : MonoBehaviour
         }
 
         CreateCheckpointCardOverlay();
+        lastObservedHealth = playerHealth;
 
         if (playerCamera != null)
         {
@@ -199,6 +215,8 @@ public class tpPlayer : MonoBehaviour
             CacheVisualMaterials();
         }
 
+        CreateCharacterEffects();
+
         if (sunController == null)
         {
             sunController = FindAnyObjectByType<SunController>();
@@ -237,9 +255,11 @@ public class tpPlayer : MonoBehaviour
     private void Update()
     {
         playerHealth = Mathf.Clamp(playerHealth, 0f, Mathf.Max(0f, maxHealth));
+        UpdateDamageSmoke();
         UpdateCameraEffects();
         UpdateHealthOverlay();
         UpdateDamageVisual();
+        UpdateSunAbilityEffect();
 
         if (isRespawning ||
             checkpointCardActive ||
@@ -258,6 +278,191 @@ public class tpPlayer : MonoBehaviour
         PlayerMoveAndRotate();
         CheckForShadow();
         AnimateVisual();
+    }
+
+    private void CreateCharacterEffects()
+    {
+        sunAbilityParticles = CreateParticleSystem(
+            "Sun Ability Green Particles",
+            sunAbilityEffectColor,
+            0.05f,
+            0.12f,
+            0.6f,
+            1.2f,
+            0.15f,
+            0.6f,
+            0.45f,
+            out sunAbilityParticleMaterial);
+        ParticleSystem.EmissionModule sunEmission = sunAbilityParticles.emission;
+        sunEmission.rateOverTime = 0f;
+
+        GameObject lightObject = new GameObject("Sun Ability Green Light");
+        lightObject.transform.SetParent(transform, false);
+        lightObject.transform.localPosition = new Vector3(0f, 1f, 0f);
+        sunAbilityLight = lightObject.AddComponent<Light>();
+        sunAbilityLight.type = LightType.Point;
+        sunAbilityLight.color = sunAbilityEffectColor;
+        sunAbilityLight.range = sunAbilityLightRange;
+        sunAbilityLight.intensity = sunAbilityLightIntensity;
+        sunAbilityLight.shadows = LightShadows.None;
+        sunAbilityLight.enabled = false;
+
+        damageSmokeParticles = CreateParticleSystem(
+            "Damage Smoke",
+            new Color(0.55f, 0.55f, 0.55f, 0.7f),
+            0.3f,
+            0.65f,
+            0.8f,
+            1.5f,
+            0.2f,
+            0.5f,
+            0.25f,
+            out damageSmokeParticleMaterial);
+        ParticleSystem.EmissionModule smokeEmission = damageSmokeParticles.emission;
+        smokeEmission.rateOverTime = 0f;
+        damageSmokeParticles.Play();
+    }
+
+    private ParticleSystem CreateParticleSystem(
+        string effectName,
+        Color color,
+        float minSize,
+        float maxSize,
+        float minLifetime,
+        float maxLifetime,
+        float minSpeed,
+        float maxSpeed,
+        float radius,
+        out Material effectMaterial)
+    {
+        GameObject effectObject = new GameObject(effectName);
+        effectObject.transform.SetParent(transform, false);
+        effectObject.transform.localPosition = new Vector3(0f, 1f, 0f);
+
+        ParticleSystem particles = effectObject.AddComponent<ParticleSystem>();
+        ParticleSystem.MainModule main = particles.main;
+        main.loop = true;
+        main.playOnAwake = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(minLifetime, maxLifetime);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(minSpeed, maxSpeed);
+        main.startSize = new ParticleSystem.MinMaxCurve(minSize, maxSize);
+        main.startColor = Color.white;
+        main.maxParticles = 200;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.rateOverTime = 0f;
+
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = radius;
+
+        ParticleSystem.VelocityOverLifetimeModule velocity = particles.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.space = ParticleSystemSimulationSpace.Local;
+        velocity.y = new ParticleSystem.MinMaxCurve(0.2f, 0.5f);
+
+        Gradient fadeGradient = new Gradient();
+        fadeGradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(color, 0f),
+                new GradientColorKey(color, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(color.a, 0f),
+                new GradientAlphaKey(color.a, 0.55f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(fadeGradient);
+
+        ParticleSystemRenderer particleRenderer = particles.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        Shader particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (particleShader == null)
+        {
+            particleShader = Shader.Find("Particles/Standard Unlit");
+        }
+
+        effectMaterial = particleShader != null ? new Material(particleShader) : null;
+        if (effectMaterial != null)
+        {
+            effectMaterial.name = effectName + " Material";
+            particleRenderer.sharedMaterial = effectMaterial;
+        }
+        else
+        {
+            Debug.LogWarning(
+                $"No supported particle shader was found for '{effectName}'; using Unity's default particle material.",
+                this);
+        }
+
+        return particles;
+    }
+
+    private void UpdateSunAbilityEffect()
+    {
+        SetSunAbilityEffect(sunController != null && sunController.IsChangingDirection);
+    }
+
+    private void SetSunAbilityEffect(bool active)
+    {
+        sunAbilityEffectActive = active;
+        if (sunAbilityParticles != null)
+        {
+            if (active)
+            {
+                ParticleSystem.EmissionModule emission = sunAbilityParticles.emission;
+                emission.rateOverTime = 14f;
+                sunAbilityParticles.Play();
+            }
+            else
+            {
+                ParticleSystem.EmissionModule emission = sunAbilityParticles.emission;
+                emission.rateOverTime = 0f;
+                sunAbilityParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+        }
+
+        if (sunAbilityLight != null)
+        {
+            sunAbilityLight.enabled = active;
+        }
+    }
+
+    private void UpdateDamageSmoke()
+    {
+        float healthLost = lastObservedHealth - playerHealth;
+        lastObservedHealth = playerHealth;
+        if (healthLost <= 0f || damageSmokeParticles == null || smokeParticlesPerDamage <= 0f)
+        {
+            return;
+        }
+
+        pendingSmokeParticles += healthLost * smokeParticlesPerDamage;
+        int particleCount = Mathf.FloorToInt(pendingSmokeParticles);
+        if (particleCount > 0)
+        {
+            damageSmokeParticles.Emit(particleCount);
+            pendingSmokeParticles -= particleCount;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (sunAbilityParticleMaterial != null)
+        {
+            Destroy(sunAbilityParticleMaterial);
+        }
+
+        if (damageSmokeParticleMaterial != null)
+        {
+            Destroy(damageSmokeParticleMaterial);
+        }
     }
 
     private Transform FindPlatformBelow()

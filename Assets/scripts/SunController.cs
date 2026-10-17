@@ -15,10 +15,21 @@ public class SunController : MonoBehaviour
     private InputAction sunLeftAction;
     private InputAction sunRightAction;
 
+    public bool IsChangingDirection =>
+        rotationEnabled &&
+        ((sunLeftAction != null && sunLeftAction.IsPressed()) ||
+         (sunRightAction != null && sunRightAction.IsPressed()));
+
     void Awake()
     {
         sunHeight = transform.eulerAngles.x;
         sunDirection = transform.eulerAngles.y;
+        if (inputActions == null)
+        {
+            Debug.LogError("SunController requires an Input Actions asset.", this);
+            return;
+        }
+
         sunUpAction = inputActions.FindAction("Player/Sun Up");
         sunDownAction = inputActions.FindAction("Player/Sun Down");
         sunLeftAction = inputActions.FindAction("Player/Sun Left");
