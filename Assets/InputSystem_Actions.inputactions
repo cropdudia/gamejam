@@ -525,11 +525,33 @@
                 },
                 {
                     "name": "",
+                    "id": "c0be612a-568c-42e6-9881-df5e76578ad0",
+                    "path": "<Keyboard>/q",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sun Left",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "0f55c9ef-cee5-4942-8451-edc778c73a34",
                     "path": "<Gamepad>/rightTrigger",
                     "interactions": "",
                     "processors": "",
                     "groups": "Gamepad",
+                    "action": "Sun Up",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "6dd51b93-969f-4646-9dc3-d3d318f0dbe7",
+                    "path": "<Keyboard>/z",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
                     "action": "Sun Up",
                     "isComposite": false,
                     "isPartOfComposite": false
@@ -547,11 +569,33 @@
                 },
                 {
                     "name": "",
+                    "id": "a758e9f1-4918-49a6-8b7c-f28520caa593",
+                    "path": "<Keyboard>/x",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sun Down",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "0b2b76a8-cc81-4905-982f-9db27f1be843",
                     "path": "<Gamepad>/rightShoulder",
                     "interactions": "",
                     "processors": "",
                     "groups": "Gamepad",
+                    "action": "Sun Right",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "b368d139-5d05-4caa-a512-d0587c95a21e",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
                     "action": "Sun Right",
                     "isComposite": false,
                     "isPartOfComposite": false
