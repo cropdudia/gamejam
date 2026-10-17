@@ -614,7 +614,7 @@ MonoBehaviour:
   promptFadeDuration: 0.5
   startPromptDelay: 0.5
   otherPromptsDelay: 0.2
-  nextLevelScene: tptest
+  nextLevelScene: world1
   optionsScene: Options
 --- !u!114 &1756947887
 MonoBehaviour:
