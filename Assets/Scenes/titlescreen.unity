@@ -614,7 +614,7 @@ MonoBehaviour:
   promptFadeDuration: 0.5
   startPromptDelay: 0.5
   otherPromptsDelay: 0.2
-  nextLevelScene: fptest
+  nextLevelScene: tptest
   optionsScene: Options
 --- !u!114 &1756947887
 MonoBehaviour:
@@ -1170,6 +1170,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   rotationSpeed: 30
+  rotationEnabled: 0
 --- !u!1 &3651933013369718457
 GameObject:
   m_ObjectHideFlags: 0
