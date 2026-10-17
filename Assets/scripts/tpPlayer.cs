@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Cinemachine;
@@ -12,10 +14,20 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private Transform playerCamera;
     [SerializeField] private Transform playerVisual;
     [SerializeField] private Image healthOverlayImage;
+    [SerializeField] private SunController sunController;
+    [SerializeField] private Transform respawnCheckpoint;
+    [SerializeField, Min(0f)] private float respawnDelay = 1f;
+    [SerializeField] private Texture2D[] checkpointTitleCards;
+    [SerializeField, Min(0f)] private float checkpointCardDisplayDuration = 2f;
+    [SerializeField, Min(0f)] private float checkpointCardFadeOutDuration = 1f;
+    private const string RespawnCheckpointName = "CHECKPOINT 1";
+    private const string CheckpointNamePrefix = "CHECKPOINT ";
 
     public Light sunLight;
     public LayerMask shadowLayers = ~0;
     public LayerMask fireLayers;
+    [SerializeField] private LayerMask instantDeathLayers;
+    [SerializeField] private LayerMask checkpointLayers;
     public float playerHealth = 100f;
     public float maxHealth = 100f;
     public float sunlightDamagePerSecond = 10f;
@@ -23,8 +35,13 @@ public class tpPlayer : MonoBehaviour
 
 
     public float playerWalkSpeed = 5.0f;
+    [SerializeField, Min(0f)] private float groundAcceleration = 25f;
+    [SerializeField, Min(0f)] private float groundDeceleration = 35f;
+    [SerializeField, Range(0f, 1f)] private float airControl = 0.2f;
     public float gravity = -9.81f;
+    [Tooltip("Initial upward speed when a jump starts.")]
     public float jumpHeight = 5.0f;
+    [SerializeField, Min(0f)] private float maxJumpHeight = 5f;
 
     [SerializeField] private float walkBobHeight = 0.05f;
     [SerializeField] private float walkBobSpeed = 10f;
@@ -34,6 +51,10 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private float lowHealthShake = 0.15f;
     [SerializeField] private float cameraEffectSmoothing = 3f;
     [SerializeField] private float cameraShakeFrequency = 20f;
+
+    [Header("Damage Visual")]
+    [SerializeField] private Color damageTint = new Color(1f, 0.2f, 0f);
+    [SerializeField, Range(0f, 100f)] private float fullDamageTintHealthPercent = 30f;
 
     [Header("Low Health Vignette")]
     [SerializeField, Range(0f, 100f)] private float vignetteStartPercent = 45f;
@@ -49,11 +70,15 @@ public class tpPlayer : MonoBehaviour
 
     private InputAction playerMoveAction;
     private InputAction playerJumpAction;
+    private InputActionMap playerActionMap;
 
     private Vector2 playerMoveAmount;
     private float playerRotateDampening = 0.1f;
     private float turnSmoothingVelocity;
     private float verticalVelocity;
+    private Vector3 horizontalVelocity;
+    private float jumpStartHeight;
+    private bool jumpCanContinueRising;
     private Vector3 visualStartPosition;
     private Quaternion visualStartRotation;
     private CinemachineCamera cinemachineCamera;
@@ -61,8 +86,23 @@ public class tpPlayer : MonoBehaviour
     private float startingFieldOfView;
     private Vector3 startingTargetOffset;
     private Color healthOverlayBaseColor;
+    private readonly List<VisualMaterialState> visualMaterialStates = new List<VisualMaterialState>();
 
-    private bool gameOver;
+    private bool isRespawning;
+    private bool checkpointCardActive;
+    private CanvasGroup checkpointCardCanvasGroup;
+    private RawImage checkpointCardImage;
+
+    private sealed class VisualMaterialState
+    {
+        public Renderer renderer;
+        public int materialIndex;
+        public int colorPropertyId;
+        public int texturePropertyId;
+        public Color baseColor;
+        public MaterialPropertyBlock originalPropertyBlock;
+        public MaterialPropertyBlock workingPropertyBlock;
+    }
 
     private Transform currentPlatform;
     private Vector3 lastPlatformPosition;
@@ -76,8 +116,9 @@ public class tpPlayer : MonoBehaviour
             return;
         }
 
-        //InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
-        InputActions.FindActionMap("Player").Enable();
+        InputActions.bindingMask = InputBinding.MaskByGroup("Gamepad");
+        playerActionMap = InputActions.FindActionMap("Player");
+        playerActionMap.Enable();
     }
 
     private void OnDisable()
@@ -86,6 +127,8 @@ public class tpPlayer : MonoBehaviour
         {
             InputActions.FindActionMap("Player").Disable();
         }
+
+        RestoreVisualMaterials();
 
         if (cinemachineCamera != null)
         {
@@ -103,6 +146,17 @@ public class tpPlayer : MonoBehaviour
 
     private void Awake()
     {
+        if (respawnCheckpoint == null)
+        {
+            GameObject checkpointObject = GameObject.Find(RespawnCheckpointName);
+            if (checkpointObject != null)
+            {
+                respawnCheckpoint = checkpointObject.transform;
+            }
+        }
+
+        CreateCheckpointCardOverlay();
+
         if (playerCamera != null)
         {
             cinemachineCamera = playerCamera.GetComponent<CinemachineCamera>();
@@ -142,6 +196,12 @@ public class tpPlayer : MonoBehaviour
         {
             visualStartPosition = playerVisual.localPosition;
             visualStartRotation = playerVisual.localRotation;
+            CacheVisualMaterials();
+        }
+
+        if (sunController == null)
+        {
+            sunController = FindAnyObjectByType<SunController>();
         }
 
         if (healthOverlayImage != null)
@@ -164,8 +224,14 @@ public class tpPlayer : MonoBehaviour
             return;
         }
 
+        playerActionMap = InputActions.FindActionMap("Player");
         playerMoveAction = InputActions.FindAction("Player/Move");
         playerJumpAction = InputActions.FindAction("Player/Jump");
+    }
+
+    private void Start()
+    {
+        StartCoroutine(ShowCheckpointCard(0));
     }
 
     private void Update()
@@ -173,8 +239,10 @@ public class tpPlayer : MonoBehaviour
         playerHealth = Mathf.Clamp(playerHealth, 0f, Mathf.Max(0f, maxHealth));
         UpdateCameraEffects();
         UpdateHealthOverlay();
+        UpdateDamageVisual();
 
-        if (gameOver ||
+        if (isRespawning ||
+            checkpointCardActive ||
             playerMoveAction == null ||
             playerJumpAction == null ||
             playerCharacterController == null)
@@ -352,7 +420,7 @@ public class tpPlayer : MonoBehaviour
             shadowLayers,
             QueryTriggerInteraction.Ignore);
 
-        if (!isInShadow)
+        if (!isInShadow && playerCharacterController.isGrounded)
         {
             playerHealth = Mathf.Max(
                 0f,
@@ -360,10 +428,7 @@ public class tpPlayer : MonoBehaviour
 
             if (playerHealth <= 0f)
             {
-                gameOver = true;
-                Time.timeScale = 0f;
-                if (heartbeatSource != null) heartbeatSource.Pause();
-                Debug.Log("Game over: player ran out of health in sunlight.", this);
+                Kill();
             }
         }
         else
@@ -374,36 +439,270 @@ public class tpPlayer : MonoBehaviour
         }
     }
 
-    private void OnGUI()
+    public void Kill()
     {
-        DrawHealthBar();
-
-        if (gameOver)
+        if (isRespawning)
         {
-            GUI.Box(
-                new Rect(Screen.width / 2 - 180, Screen.height / 2 - 50, 360, 100),
-                "GAME OVER\nYou ran out of health in sunlight.");
+            return;
+        }
+
+        playerHealth = 0f;
+        isRespawning = true;
+
+        if (heartbeatSource != null)
+        {
+            heartbeatSource.Pause();
+        }
+
+        if (respawnCheckpoint == null)
+        {
+            GameObject checkpointObject = GameObject.Find(RespawnCheckpointName);
+            if (checkpointObject != null)
+            {
+                respawnCheckpoint = checkpointObject.transform;
+            }
+        }
+
+        if (respawnCheckpoint == null)
+        {
+            Debug.LogError(
+                $"Cannot respawn: no active GameObject named '{RespawnCheckpointName}' was found, and no checkpoint is assigned.",
+                this);
+            return;
+        }
+
+        StartCoroutine(Respawn());
+    }
+
+    private IEnumerator Respawn()
+    {
+        yield return new WaitForSecondsRealtime(respawnDelay);
+
+        if (respawnCheckpoint == null)
+        {
+            Debug.LogError("Cannot respawn: the checkpoint was destroyed before respawn completed.", this);
+            yield break;
+        }
+
+        bool controllerWasEnabled = playerCharacterController != null &&
+                                    playerCharacterController.enabled;
+        if (controllerWasEnabled)
+        {
+            playerCharacterController.enabled = false;
+        }
+
+        transform.SetPositionAndRotation(
+            respawnCheckpoint.position,
+            respawnCheckpoint.rotation);
+
+        if (controllerWasEnabled)
+        {
+            playerCharacterController.enabled = true;
+        }
+
+        playerHealth = maxHealth;
+        verticalVelocity = 0f;
+        horizontalVelocity = Vector3.zero;
+        jumpCanContinueRising = false;
+        currentPlatform = null;
+        platformCarryOffset = Vector3.zero;
+        isRespawning = false;
+
+        if (heartbeatSource != null)
+        {
+            heartbeatSource.UnPause();
         }
     }
 
-    private void DrawHealthBar()
+    private void CreateCheckpointCardOverlay()
     {
-        float safeMaxHealth = Mathf.Max(0.01f, maxHealth);
-        float healthRatio = Mathf.Clamp01(playerHealth / safeMaxHealth);
-        Rect barRect = new Rect(20f, 20f, 200f, 20f);
+        GameObject canvasObject = new GameObject("Checkpoint Title Card Canvas");
+        Canvas canvas = canvasObject.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 1000;
 
-        GUI.Box(barRect, GUIContent.none);
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
 
-        Color previousColor = GUI.color;
-        GUI.color = Color.green;
-        GUI.DrawTexture(
-            new Rect(barRect.x + 2f, barRect.y + 2f, (barRect.width - 4f) * healthRatio, barRect.height - 4f),
-            Texture2D.whiteTexture);
-        GUI.color = previousColor;
+        GameObject imageObject = new GameObject("Checkpoint Title Card");
+        imageObject.transform.SetParent(canvasObject.transform, false);
 
-        GUI.Label(
-            new Rect(barRect.x, barRect.y + barRect.height + 2f, barRect.width, 20f),
-            $"Health: {Mathf.Clamp(playerHealth, 0f, safeMaxHealth):0} / {safeMaxHealth:0}");
+        RectTransform imageTransform = imageObject.AddComponent<RectTransform>();
+        imageTransform.anchorMin = Vector2.zero;
+        imageTransform.anchorMax = Vector2.one;
+        imageTransform.offsetMin = Vector2.zero;
+        imageTransform.offsetMax = Vector2.zero;
+
+        checkpointCardImage = imageObject.AddComponent<RawImage>();
+        checkpointCardImage.raycastTarget = false;
+        checkpointCardCanvasGroup = imageObject.AddComponent<CanvasGroup>();
+        checkpointCardCanvasGroup.alpha = 0f;
+        checkpointCardCanvasGroup.blocksRaycasts = false;
+        checkpointCardCanvasGroup.interactable = false;
+    }
+
+    private IEnumerator ShowCheckpointCard(int checkpointIndex)
+    {
+        if (checkpointTitleCards == null ||
+            checkpointIndex < 0 ||
+            checkpointIndex >= checkpointTitleCards.Length ||
+            checkpointTitleCards[checkpointIndex] == null)
+        {
+            Debug.LogWarning(
+                $"No title card texture is assigned for checkpoint {checkpointIndex + 1}.",
+                this);
+            ShowCheckpointTutorial(checkpointIndex);
+            yield break;
+        }
+
+        checkpointCardActive = true;
+        if (playerActionMap != null)
+        {
+            playerActionMap.Disable();
+        }
+
+        checkpointCardImage.texture = checkpointTitleCards[checkpointIndex];
+        checkpointCardCanvasGroup.alpha = 1f;
+
+        if (checkpointCardDisplayDuration > 0f)
+        {
+            yield return new WaitForSecondsRealtime(checkpointCardDisplayDuration);
+        }
+
+        float elapsed = 0f;
+        while (elapsed < checkpointCardFadeOutDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            checkpointCardCanvasGroup.alpha = 1f -
+                Mathf.Clamp01(elapsed / checkpointCardFadeOutDuration);
+            yield return null;
+        }
+
+        checkpointCardCanvasGroup.alpha = 0f;
+        checkpointCardImage.texture = null;
+        checkpointCardActive = false;
+        if (playerActionMap != null)
+        {
+            playerActionMap.Enable();
+        }
+
+        ShowCheckpointTutorial(checkpointIndex);
+    }
+
+    private static void ShowCheckpointTutorial(int checkpointIndex)
+    {
+        if (checkpointIndex == 0)
+        {
+            TutorialPopup.ShowMessage("Left stick = Move \nRight Stick = Camera\nX = Jump");
+        }
+        else if (checkpointIndex == 1)
+        {
+            TutorialPopup.ShowMessage("R1 L1 = Change Time \nChronomansy.");
+        }
+    }
+
+    private static bool TryGetCheckpointIndex(Transform checkpoint, out int checkpointIndex)
+    {
+        checkpointIndex = -1;
+        if (checkpoint == null ||
+            !checkpoint.name.StartsWith(CheckpointNamePrefix, System.StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string number = checkpoint.name.Substring(CheckpointNamePrefix.Length);
+        if (!int.TryParse(number, out int checkpointNumber) ||
+            checkpointNumber < 1 ||
+            checkpointNumber > 5)
+        {
+            return false;
+        }
+
+        checkpointIndex = checkpointNumber - 1;
+        return true;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (isRespawning || checkpointCardActive)
+        {
+            return;
+        }
+
+        if ((instantDeathLayers.value & (1 << other.gameObject.layer)) != 0)
+        {
+            Kill();
+            return;
+        }
+
+        if ((checkpointLayers.value & (1 << other.gameObject.layer)) == 0)
+        {
+            return;
+        }
+
+        Transform newCheckpoint = other.transform;
+        bool foundNamedCheckpoint = false;
+        for (Transform candidate = other.transform; candidate != null; candidate = candidate.parent)
+        {
+            if (TryGetCheckpointIndex(candidate, out _))
+            {
+                newCheckpoint = candidate;
+                foundNamedCheckpoint = true;
+                break;
+            }
+        }
+
+        if (!foundNamedCheckpoint)
+        {
+            while (newCheckpoint.parent != null &&
+                   (checkpointLayers.value & (1 << newCheckpoint.parent.gameObject.layer)) != 0)
+            {
+                newCheckpoint = newCheckpoint.parent;
+            }
+        }
+
+        if (newCheckpoint == respawnCheckpoint)
+        {
+            return;
+        }
+
+        if (!TryGetCheckpointIndex(newCheckpoint, out int checkpointIndex))
+        {
+            Debug.LogWarning(
+                $"Checkpoint '{newCheckpoint.name}' must be named CHECKPOINT 1 through CHECKPOINT 5 to show its title card.",
+                this);
+            return;
+        }
+
+        Transform previousCheckpoint = respawnCheckpoint;
+        respawnCheckpoint = newCheckpoint;
+
+        if (checkpointIndex == 1)
+        {
+            if (sunController == null)
+            {
+                sunController = FindAnyObjectByType<SunController>();
+            }
+
+            if (sunController != null)
+            {
+                sunController.SetRotationEnabled(true);
+            }
+            else
+            {
+                Debug.LogWarning("Cannot enable sun rotation at checkpoint 2: no SunController exists in the scene.", this);
+            }
+        }
+
+        if (previousCheckpoint != null)
+        {
+            previousCheckpoint.gameObject.SetActive(false);
+        }
+
+        Debug.Log($"Checkpoint updated: {respawnCheckpoint.name}.", this);
+        StartCoroutine(ShowCheckpointCard(checkpointIndex));
     }
 
     private void Jump()
@@ -411,15 +710,46 @@ public class tpPlayer : MonoBehaviour
         if (playerCharacterController.isGrounded)
         {
             verticalVelocity = -1f;
+            jumpCanContinueRising = false;
 
             if (playerJumpAction.WasPressedThisFrame())
             {
-                verticalVelocity = jumpHeight;
+                jumpStartHeight = transform.position.y;
+                verticalVelocity = Mathf.Max(0f, jumpHeight);
+                jumpCanContinueRising = maxJumpHeight > 0f && verticalVelocity > 0f;
+
+                if (jumpCanContinueRising &&
+                    verticalVelocity * Time.deltaTime >= maxJumpHeight)
+                {
+                    verticalVelocity = maxJumpHeight / Time.deltaTime;
+                    jumpCanContinueRising = false;
+                }
             }
+
+            return;
         }
-        else
+
+        if (!jumpCanContinueRising || !playerJumpAction.IsPressed())
         {
+            jumpCanContinueRising = false;
             verticalVelocity += gravity * Time.deltaTime;
+            return;
+        }
+
+        float heightGained = transform.position.y - jumpStartHeight;
+        float remainingJumpHeight = maxJumpHeight - heightGained;
+        if (remainingJumpHeight <= 0f || verticalVelocity <= 0f)
+        {
+            jumpCanContinueRising = false;
+            verticalVelocity = 0f;
+            return;
+        }
+
+        float frameRise = verticalVelocity * Time.deltaTime;
+        if (frameRise >= remainingJumpHeight)
+        {
+            verticalVelocity = remainingJumpHeight / Time.deltaTime;
+            jumpCanContinueRising = false;
         }
     }
 
@@ -431,9 +761,7 @@ public class tpPlayer : MonoBehaviour
             playerMoveAmount.y);
 
         float moveAmount = playerDirection.magnitude;
-        // Vertical velocity plus whatever the platform under us moved this frame
-        Vector3 verticalMove = new Vector3(0f, verticalVelocity, 0f) * Time.deltaTime + platformCarryOffset;
-
+        Vector3 desiredHorizontalVelocity = Vector3.zero;
         if (moveAmount >= 0.1f)
         {
             playerDirection.Normalize();
@@ -441,25 +769,135 @@ public class tpPlayer : MonoBehaviour
             float targetAngle = Mathf.Atan2(playerDirection.x, playerDirection.z) *
                                 Mathf.Rad2Deg +
                                 playerCamera.eulerAngles.y;
+            Vector3 moveDirection = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
+            desiredHorizontalVelocity = moveDirection * playerWalkSpeed * moveAmount;
 
             float smoothTargetAngle = Mathf.SmoothDampAngle(
                 transform.eulerAngles.y,
                 targetAngle,
                 ref turnSmoothingVelocity,
                 playerRotateDampening);
-
             transform.rotation = Quaternion.Euler(0f, smoothTargetAngle, 0f);
-
-            Vector3 moveDirection = Quaternion.Euler(0f, targetAngle, 0f) *
-                                    Vector3.forward;
-
-            playerCharacterController.Move(
-                moveDirection * playerWalkSpeed * moveAmount * Time.deltaTime +
-                verticalMove);
         }
-        else
+
+        if (playerCharacterController.isGrounded)
         {
-            playerCharacterController.Move(verticalMove);
+            float groundAccelerationRate = moveAmount >= 0.1f
+                ? groundAcceleration
+                : groundDeceleration;
+            horizontalVelocity = Vector3.MoveTowards(
+                horizontalVelocity,
+                desiredHorizontalVelocity,
+                groundAccelerationRate * Time.deltaTime);
+        }
+        else if (moveAmount >= 0.1f)
+        {
+            float airAcceleration = playerWalkSpeed * airControl * Time.deltaTime;
+            horizontalVelocity = Vector3.MoveTowards(
+                horizontalVelocity,
+                desiredHorizontalVelocity,
+                airAcceleration);
+        }
+
+        // Vertical velocity plus whatever the platform under us moved this frame
+        Vector3 frameMove = horizontalVelocity * Time.deltaTime +
+                            new Vector3(0f, verticalVelocity, 0f) * Time.deltaTime +
+                            platformCarryOffset;
+        playerCharacterController.Move(frameMove);
+    }
+
+    private void CacheVisualMaterials()
+    {
+        visualMaterialStates.Clear();
+
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer visualRenderer in renderers)
+        {
+            Material[] materials = visualRenderer.sharedMaterials;
+            for (int materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+            {
+                Material material = materials[materialIndex];
+                if (material == null)
+                {
+                    continue;
+                }
+
+                int colorPropertyId = material.HasProperty("_BaseColor")
+                    ? Shader.PropertyToID("_BaseColor")
+                    : material.HasProperty("_Color")
+                        ? Shader.PropertyToID("_Color")
+                        : 0;
+                if (colorPropertyId == 0)
+                {
+                    continue;
+                }
+
+                int texturePropertyId = material.HasProperty("_BaseMap")
+                    ? Shader.PropertyToID("_BaseMap")
+                    : material.HasProperty("_MainTex")
+                        ? Shader.PropertyToID("_MainTex")
+                        : 0;
+                MaterialPropertyBlock originalPropertyBlock = new MaterialPropertyBlock();
+                visualRenderer.GetPropertyBlock(originalPropertyBlock, materialIndex);
+
+                visualMaterialStates.Add(new VisualMaterialState
+                {
+                    renderer = visualRenderer,
+                    materialIndex = materialIndex,
+                    colorPropertyId = colorPropertyId,
+                    texturePropertyId = texturePropertyId,
+                    baseColor = originalPropertyBlock.HasColor(colorPropertyId)
+                        ? originalPropertyBlock.GetColor(colorPropertyId)
+                        : material.GetColor(colorPropertyId),
+                    originalPropertyBlock = originalPropertyBlock,
+                    workingPropertyBlock = new MaterialPropertyBlock()
+                });
+            }
+        }
+    }
+
+    private void UpdateDamageVisual()
+    {
+        float healthPercent = Mathf.Clamp01(playerHealth / Mathf.Max(0.01f, maxHealth));
+        float fullTintHealth = Mathf.Clamp01(fullDamageTintHealthPercent / 100f);
+        float tintAmount = 1f - Mathf.InverseLerp(fullTintHealth, 1f, healthPercent);
+        tintAmount = Mathf.SmoothStep(0f, 1f, tintAmount);
+        bool fullyTinted = tintAmount >= 1f;
+
+        foreach (VisualMaterialState materialState in visualMaterialStates)
+        {
+            Color tintedColor = Color.Lerp(materialState.baseColor, damageTint, tintAmount);
+            tintedColor.a = materialState.baseColor.a;
+
+            materialState.renderer.SetPropertyBlock(
+                materialState.originalPropertyBlock,
+                materialState.materialIndex);
+            materialState.renderer.GetPropertyBlock(
+                materialState.workingPropertyBlock,
+                materialState.materialIndex);
+            materialState.workingPropertyBlock.SetColor(materialState.colorPropertyId, tintedColor);
+            if (fullyTinted && materialState.texturePropertyId != 0)
+            {
+                materialState.workingPropertyBlock.SetTexture(
+                    materialState.texturePropertyId,
+                    Texture2D.whiteTexture);
+            }
+            materialState.renderer.SetPropertyBlock(
+                materialState.workingPropertyBlock,
+                materialState.materialIndex);
+        }
+    }
+
+    private void RestoreVisualMaterials()
+    {
+        foreach (VisualMaterialState materialState in visualMaterialStates)
+        {
+            if (materialState.renderer != null)
+            {
+                materialState.renderer.SetPropertyBlock(
+                    materialState.originalPropertyBlock,
+                    materialState.materialIndex);
+            }
         }
     }
 

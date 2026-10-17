@@ -18,19 +18,19 @@ MonoBehaviour:
     m_Value: 1
   threshold:
     m_OverrideState: 1
-    m_Value: 0.7
+    m_Value: 0.63
   intensity:
     m_OverrideState: 1
-    m_Value: 8.75
+    m_Value: 3.84
   scatter:
     m_OverrideState: 1
-    m_Value: 0.068
+    m_Value: 0.73
   clamp:
     m_OverrideState: 0
     m_Value: 0.8
   tint:
     m_OverrideState: 1
-    m_Value: {r: 0.9652819, g: 1, b: 0, a: 1}
+    m_Value: {r: 1, g: 0.31514066, b: 0, a: 1}
   highQualityFiltering:
     m_OverrideState: 0
     m_Value: 0
@@ -45,11 +45,11 @@ MonoBehaviour:
     m_Value: 6
   dirtTexture:
     m_OverrideState: 0
-    m_Value: {fileID: 0}
+    m_Value: {fileID: 2800000, guid: 0da274c75db4f5ca89a73332e08e1eb0, type: 3}
     dimension: 1
   dirtIntensity:
     m_OverrideState: 0
-    m_Value: 0
+    m_Value: 1
 --- !u!114 &-3357603926938260329
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -107,7 +107,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97c23e3b12dc18c42a140437e53d3951, type: 3}
   m_Name: Tonemapping
   m_EditorClassIdentifier: 
-  active: 0
+  active: 1
   mode:
     m_OverrideState: 1
     m_Value: 2

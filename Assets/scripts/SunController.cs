@@ -6,6 +6,7 @@ public class SunController : MonoBehaviour
 {
     public InputActionAsset inputActions;
     public float rotationSpeed = 30f;
+    [SerializeField] private bool rotationEnabled;
 
     private float sunHeight;
     private float sunDirection;
@@ -26,19 +27,27 @@ public class SunController : MonoBehaviour
 
     void Update()
     {
+        if (!rotationEnabled)
+            return;
+
         if (sunUpAction == null || sunDownAction == null || sunLeftAction == null || sunRightAction == null)
             return;
 
-        float heightChange = 0f;
-        if (sunDownAction.IsPressed()) heightChange -= 1f;
-        if (sunUpAction.IsPressed()) heightChange += 1f;
+        //float heightChange = 0f;
+        //if (sunDownAction.IsPressed()) heightChange -= 1f;
+        //if (sunUpAction.IsPressed()) heightChange += 1f;
 
         float directionChange = 0f;
         if (sunLeftAction.IsPressed()) directionChange -= 1f;
         if (sunRightAction.IsPressed()) directionChange += 1f;
 
-        sunHeight = Mathf.Clamp(sunHeight + heightChange * rotationSpeed * Time.deltaTime, 0f, 90f);
+        //sunHeight = Mathf.Clamp(sunHeight + heightChange * rotationSpeed * Time.deltaTime, 0f, 90f);
         sunDirection += directionChange * rotationSpeed * Time.deltaTime;
         transform.rotation = Quaternion.Euler(sunHeight, sunDirection, 0f);
+    }
+
+    public void SetRotationEnabled(bool enabled)
+    {
+        rotationEnabled = enabled;
     }
 }

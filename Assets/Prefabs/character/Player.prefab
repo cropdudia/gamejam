@@ -157,6 +157,7 @@ GameObject:
   - component: {fileID: 6578226368016181026}
   - component: {fileID: 618898979903449964}
   - component: {fileID: 6326076168972492398}
+  - component: {fileID: 7018453926210981347}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -223,6 +224,16 @@ MonoBehaviour:
   playerCamera: {fileID: 0}
   playerVisual: {fileID: 0}
   healthOverlayImage: {fileID: 0}
+  respawnCheckpoint: {fileID: 0}
+  respawnDelay: 1
+  checkpointTitleCards:
+  - {fileID: 2800000, guid: 201ef23591e317c2196dfbd3049f7b73, type: 3}
+  - {fileID: 2800000, guid: 5492cbb1ddd589eb18b145d725091a5f, type: 3}
+  - {fileID: 2800000, guid: 2a97daf0f3bb7a3799824fea59e1e275, type: 3}
+  - {fileID: 2800000, guid: bbd1a2332a62a1d78bd71a27f8f1c555, type: 3}
+  - {fileID: 2800000, guid: a5718f631180b7a9b98ec43ea9339565, type: 3}
+  checkpointCardDisplayDuration: 2
+  checkpointCardFadeOutDuration: 1
   sunLight: {fileID: 0}
   shadowLayers:
     serializedVersion: 2
@@ -245,6 +256,23 @@ MonoBehaviour:
   lowHealthShake: 5
   cameraEffectSmoothing: 5
   cameraShakeFrequency: 20
+--- !u!114 &7018453926210981347
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6400077548911247087}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74d3bda8f2324f61b7d8d15fcf4b6130, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  displayDuration: 4
+  fadeDuration: 0.25
+  panelSize: {x: 520, y: 150}
+  screenPadding: {x: 36, y: 36}
+  fontAsset: {fileID: 11400000, guid: 1666c9e7a03e4472183993186d7d6841, type: 2}
 --- !u!1001 &5962332705208602359
 PrefabInstance:
   m_ObjectHideFlags: 0
