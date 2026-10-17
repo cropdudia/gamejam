@@ -34,6 +34,12 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private float cameraEffectSmoothing = 3f;
     [SerializeField] private float cameraShakeFrequency = 20f;
 
+    [Header("Low Health Vignette")]
+    [SerializeField, Range(0f, 100f)] private float vignetteStartPercent = 45f;
+    [SerializeField, Range(0f, 1f)] private float vignetteMinBrightness = 50f / 255f;
+    [SerializeField] private AudioSource heartbeatSource;
+    [SerializeField, Range(0f, 1f)] private float heartbeatMaxVolume = 1f;
+
     private InputAction playerMoveAction;
     private InputAction playerJumpAction;
 
@@ -131,6 +137,16 @@ public class tpPlayer : MonoBehaviour
             healthOverlayBaseColor = healthOverlayImage.color;
         }
 
+        if (heartbeatSource != null)
+        {
+            heartbeatSource.loop = true;
+            heartbeatSource.volume = 0f;
+            if (!heartbeatSource.isPlaying)
+            {
+                heartbeatSource.Play();
+            }
+        }
+
         if (InputActions == null)
         {
             return;
@@ -163,17 +179,34 @@ public class tpPlayer : MonoBehaviour
         AnimateVisual();
     }
 
+    // 0 = healthy / above threshold, 1 = dead
+    private float GetVignetteIntensity()
+    {
+        float appearOn = Mathf.Max(0.01f, maxHealth * (vignetteStartPercent / 100f));
+        float amplitude = Mathf.Min(playerHealth / appearOn, 1f); // same as the Roblox Amplitude
+        return 1f - amplitude;
+    }
+
     private void UpdateHealthOverlay()
     {
-        if (healthOverlayImage == null)
+        float intensity = GetVignetteIntensity();
+
+        if (healthOverlayImage != null)
         {
-            return;
+            float brightness = Mathf.Max(vignetteMinBrightness, intensity);
+
+            Color c = healthOverlayBaseColor;
+            c.r *= brightness;
+            c.g *= brightness;
+            c.b *= brightness;
+            c.a *= intensity;
+            healthOverlayImage.color = c;
         }
 
-        float healthLoss = 1f - Mathf.Clamp01(playerHealth / Mathf.Max(0.01f, maxHealth));
-        Color overlayColor = healthOverlayBaseColor;
-        overlayColor.a *= healthLoss;
-        healthOverlayImage.color = overlayColor;
+        if (heartbeatSource != null)
+        {
+            heartbeatSource.volume = intensity * heartbeatMaxVolume;
+        }
     }
 
     private void UpdateCameraEffects()
@@ -238,6 +271,7 @@ public class tpPlayer : MonoBehaviour
             {
                 gameOver = true;
                 Time.timeScale = 0f;
+                if (heartbeatSource != null) heartbeatSource.Pause();
                 Debug.Log("Game over: player ran out of health in sunlight.", this);
             }
         }
