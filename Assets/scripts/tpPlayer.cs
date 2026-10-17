@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 using Unity.Cinemachine;
 using UnityEngine.UI;
 
+[DefaultExecutionOrder(100)] // run after platform movers (default order 0), before Cinemachine
 public class tpPlayer : MonoBehaviour
 {
     public InputActionAsset InputActions;
@@ -40,6 +41,12 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private AudioSource heartbeatSource;
     [SerializeField, Range(0f, 1f)] private float heartbeatMaxVolume = 1f;
 
+    [Header("Moving Platforms")]
+    [SerializeField] private LayerMask platformLayers = ~0;
+    [SerializeField] private float platformCheckDistance = 50.3f; // how far below the feet to look
+    [SerializeField] private bool rotateCameraWithPlatform = true;
+    private const string PlatformTag = "Platform";
+
     private InputAction playerMoveAction;
     private InputAction playerJumpAction;
 
@@ -56,6 +63,11 @@ public class tpPlayer : MonoBehaviour
     private Color healthOverlayBaseColor;
 
     private bool gameOver;
+
+    private Transform currentPlatform;
+    private Vector3 lastPlatformPosition;
+    private Quaternion lastPlatformRotation;
+    private Vector3 platformCarryOffset;
 
     private void OnEnable()
     {
@@ -173,10 +185,89 @@ public class tpPlayer : MonoBehaviour
         playerMoveAmount = playerMoveAction.ReadValue<Vector2>();
         playerMoveAmount = Vector2.ClampMagnitude(playerMoveAmount, 1f);
 
+        UpdatePlatformCarry();
         Jump();
         PlayerMoveAndRotate();
         CheckForShadow();
         AnimateVisual();
+    }
+
+    private Transform FindPlatformBelow()
+    {
+        Bounds bounds = playerCharacterController.bounds;
+        float distance = bounds.extents.y + platformCheckDistance;
+
+        if (!Physics.Raycast(
+                bounds.center,
+                Vector3.down,
+                out RaycastHit hit,
+                distance,
+                platformLayers,
+                QueryTriggerInteraction.Ignore))
+        {
+            return null;
+        }
+
+        // Walk up the hierarchy so child colliders of a tagged platform count too
+        for (Transform t = hit.collider.transform; t != null; t = t.parent)
+        {
+            if (t.CompareTag(PlatformTag))
+            {
+                return t;
+            }
+        }
+
+        return null;
+    }
+
+    // Works out how far the platform under the player moved since last frame.
+    // Position is added to this frame's Move() (so isGrounded stays correct),
+    // yaw is applied to the player and camera directly.
+    private void UpdatePlatformCarry()
+    {
+        platformCarryOffset = Vector3.zero;
+
+        Transform platform = FindPlatformBelow();
+
+        if (platform == null)
+        {
+            currentPlatform = null;
+            return;
+        }
+
+        // Only carry when staying on the same platform as last frame.
+        // On a new platform we just start tracking it (no jump).
+        if (platform == currentPlatform)
+        {
+            Quaternion deltaRotation = platform.rotation * Quaternion.Inverse(lastPlatformRotation);
+            Vector3 playerPosition = transform.position;
+
+            // Same as Roblox: newPlatformCF * inverse(lastPlatformCF) applied to the player
+            Vector3 carriedPosition = platform.position +
+                                      deltaRotation * (playerPosition - lastPlatformPosition);
+            platformCarryOffset = carriedPosition - playerPosition;
+
+            // Only the yaw turns the player/camera, so tilting platforms don't tip the character over
+            Vector3 flatForward = deltaRotation * Vector3.forward;
+            flatForward.y = 0f;
+
+            if (flatForward.sqrMagnitude > 0.0001f)
+            {
+                float yawDelta = Mathf.Atan2(flatForward.x, flatForward.z) * Mathf.Rad2Deg;
+
+                transform.rotation = Quaternion.Euler(0f, yawDelta, 0f) * transform.rotation;
+
+                if (rotateCameraWithPlatform && orbitalFollow != null)
+                {
+                    orbitalFollow.HorizontalAxis.Value =
+                        Mathf.DeltaAngle(0f, orbitalFollow.HorizontalAxis.Value + yawDelta);
+                }
+            }
+        }
+
+        currentPlatform = platform;
+        lastPlatformPosition = platform.position;
+        lastPlatformRotation = platform.rotation;
     }
 
     // 0 = healthy / above threshold, 1 = dead
@@ -340,7 +431,8 @@ public class tpPlayer : MonoBehaviour
             playerMoveAmount.y);
 
         float moveAmount = playerDirection.magnitude;
-        Vector3 verticalMove = new Vector3(0f, verticalVelocity, 0f) * Time.deltaTime;
+        // Vertical velocity plus whatever the platform under us moved this frame
+        Vector3 verticalMove = new Vector3(0f, verticalVelocity, 0f) * Time.deltaTime + platformCarryOffset;
 
         if (moveAmount >= 0.1f)
         {
