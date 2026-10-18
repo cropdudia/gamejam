@@ -25,7 +25,6 @@ public class startscreen : MonoBehaviour
     private Color logoBaseColor;
     private Color startPromptBaseColor;
     private Color optionsPromptBaseColor;
-    private Color quitPromptBaseColor;
     private bool transitioning;
 
     private void Awake()
@@ -33,12 +32,11 @@ public class startscreen : MonoBehaviour
         if (logoImage != null) logoBaseColor = logoImage.color;
         if (startPrompt != null) startPromptBaseColor = startPrompt.color;
         if (optionsPrompt != null) optionsPromptBaseColor = optionsPrompt.color;
-        if (quitPrompt != null) quitPromptBaseColor = quitPrompt.color;
 
         SetAlpha(logoImage, logoBaseColor, 0f);
         SetAlpha(startPrompt, startPromptBaseColor, 0f);
         SetAlpha(optionsPrompt, optionsPromptBaseColor, 0f);
-        SetAlpha(quitPrompt, quitPromptBaseColor, 0f);
+        SetAlpha(quitPrompt, quitPrompt != null ? quitPrompt.color : Color.white, 0f);
     }
 
     private void Start()
@@ -55,7 +53,7 @@ public class startscreen : MonoBehaviour
 
         bool startPressed = false;
         bool optionsPressed = false;
-        bool quitPressed = false;
+        bool exitButtonPressed = false;
 
         foreach (InputDevice device in InputSystem.devices)
         {
@@ -68,12 +66,12 @@ public class startscreen : MonoBehaviour
 
                 if (device is Gamepad gamepad)
                 {
-                    quitPressed |= button == gamepad.buttonEast;
+                    exitButtonPressed |= button == gamepad.buttonEast;
                     optionsPressed |= button == gamepad.buttonWest;
                 }
                 else if (device is Keyboard keyboard)
                 {
-                    quitPressed |= button == keyboard.escapeKey;
+                    exitButtonPressed |= button == keyboard.escapeKey;
                     optionsPressed |= button == keyboard.oKey;
                 }
 
@@ -81,11 +79,12 @@ public class startscreen : MonoBehaviour
             }
         }
 
-        if (quitPressed)
+        if (exitButtonPressed)
         {
-            QuitGame();
+            return;
         }
-        else if (optionsPressed)
+
+        if (optionsPressed)
         {
             LoadScene(optionsScene);
         }
@@ -101,25 +100,7 @@ public class startscreen : MonoBehaviour
         yield return new WaitForSecondsRealtime(startPromptDelay);
         yield return FadeIn(startPrompt, startPromptBaseColor, promptFadeDuration);
         yield return new WaitForSecondsRealtime(otherPromptsDelay);
-        yield return FadeInOtherPrompts();
-    }
-
-    private IEnumerator FadeInOtherPrompts()
-    {
-        float elapsed = 0f;
-        while (elapsed < promptFadeDuration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            float alpha = promptFadeDuration <= 0f
-                ? 1f
-                : Mathf.Clamp01(elapsed / promptFadeDuration);
-            SetAlpha(optionsPrompt, optionsPromptBaseColor, alpha);
-            SetAlpha(quitPrompt, quitPromptBaseColor, alpha);
-            yield return null;
-        }
-
-        SetAlpha(optionsPrompt, optionsPromptBaseColor, 1f);
-        SetAlpha(quitPrompt, quitPromptBaseColor, 1f);
+        yield return FadeIn(optionsPrompt, optionsPromptBaseColor, promptFadeDuration);
     }
 
     private static IEnumerator FadeIn(Graphic graphic, Color baseColor, float duration)
@@ -172,11 +153,5 @@ public class startscreen : MonoBehaviour
         transitioning = true;
         Time.timeScale = 1f;
         SceneManager.LoadScene(sceneName);
-    }
-
-    private void QuitGame()
-    {
-        transitioning = true;
-        Application.Quit();
     }
 }

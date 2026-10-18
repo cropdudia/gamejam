@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using Unity.Cinemachine;
 using UnityEngine.UI;
+using TMPro;
 
 [DefaultExecutionOrder(100)] // run after platform movers (default order 0), before Cinemachine
 public class tpPlayer : MonoBehaviour
@@ -110,6 +111,9 @@ public class tpPlayer : MonoBehaviour
     private readonly bool[] activatedEnemyCheckpoints = new bool[5];
     private CanvasGroup checkpointCardCanvasGroup;
     private RawImage checkpointCardImage;
+    private GameObject quitConfirmationOverlay;
+    private TMP_Text quitConfirmationText;
+    private bool quitConfirmationPending;
 
     private sealed class VisualMaterialState
     {
@@ -176,6 +180,7 @@ public class tpPlayer : MonoBehaviour
         }
 
         CreateCheckpointCardOverlay();
+        CreateQuitConfirmationOverlay();
         lastObservedHealth = playerHealth;
 
         if (playerCamera != null)
@@ -268,6 +273,8 @@ public class tpPlayer : MonoBehaviour
 
     private void Update()
     {
+        UpdateQuitConfirmation();
+
         playerHealth = Mathf.Clamp(playerHealth, 0f, Mathf.Max(0f, maxHealth));
         UpdateDamageSmoke();
         UpdateCameraEffects();
@@ -294,6 +301,89 @@ public class tpPlayer : MonoBehaviour
         CheckForShadow();
         AnimateVisual();
         UpdateWalkSound();
+    }
+
+    private void UpdateQuitConfirmation()
+    {
+        bool quitButtonPressed = Keyboard.current != null &&
+                                 Keyboard.current.escapeKey.wasPressedThisFrame;
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            quitButtonPressed |= gamepad.startButton.wasPressedThisFrame;
+        }
+
+        if (!quitButtonPressed)
+        {
+            return;
+        }
+
+        if (quitConfirmationPending)
+        {
+            QuitGame();
+            return;
+        }
+
+        quitConfirmationPending = true;
+        quitConfirmationOverlay.SetActive(true);
+    }
+
+    private void CreateQuitConfirmationOverlay()
+    {
+        GameObject canvasObject = new GameObject(
+            "Quit Confirmation Canvas",
+            typeof(Canvas),
+            typeof(CanvasScaler));
+        quitConfirmationOverlay = canvasObject;
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 1000;
+
+        CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+
+        GameObject panelObject = new GameObject(
+            "Quit Confirmation Panel",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image));
+        panelObject.transform.SetParent(canvasObject.transform, false);
+        RectTransform panelRect = panelObject.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.sizeDelta = new Vector2(760f, 150f);
+
+        Image panelImage = panelObject.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.8f);
+        panelImage.raycastTarget = false;
+
+        GameObject textObject = new GameObject(
+            "Quit Confirmation Text",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(panelObject.transform, false);
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(20f, 10f);
+        textRect.offsetMax = new Vector2(-20f, -10f);
+
+        quitConfirmationText = textObject.GetComponent<TextMeshProUGUI>();
+        quitConfirmationText.text = "Quit the game? Press Escape or Start again to confirm.";
+        quitConfirmationText.alignment = TextAlignmentOptions.Center;
+        quitConfirmationText.fontSize = 32f;
+        quitConfirmationText.raycastTarget = false;
+        quitConfirmationOverlay.SetActive(false);
+    }
+
+    private static void QuitGame()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     private void UpdateWalkSound()
