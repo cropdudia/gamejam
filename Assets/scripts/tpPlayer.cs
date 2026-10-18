@@ -16,6 +16,9 @@ public class tpPlayer : MonoBehaviour
     [SerializeField] private Image healthOverlayImage;
     [SerializeField] private SunController sunController;
     [SerializeField] private Transform respawnCheckpoint;
+    [SerializeField] private AudioSource sizzling;
+    [SerializeField] private AudioSource jumpClip;
+    [SerializeField] private AudioSource walkClip;
     [SerializeField, Min(0f)] private float respawnDelay = 1f;
     [SerializeField] private Texture2D[] checkpointTitleCards;
     [SerializeField, Min(0f)] private float checkpointCardDisplayDuration = 2f;
@@ -157,6 +160,7 @@ public class tpPlayer : MonoBehaviour
         }
 
         SetSunAbilityEffect(false);
+        SetWalkSound(false);
     }
 
     private void Awake()
@@ -237,6 +241,11 @@ public class tpPlayer : MonoBehaviour
             }
         }
 
+        if (walkClip != null)
+        {
+            walkClip.loop = true;
+        }
+
         if (InputActions == null)
         {
             return;
@@ -267,6 +276,7 @@ public class tpPlayer : MonoBehaviour
             playerJumpAction == null ||
             playerCharacterController == null)
         {
+            SetWalkSound(false);
             return;
         }
 
@@ -278,6 +288,33 @@ public class tpPlayer : MonoBehaviour
         PlayerMoveAndRotate();
         CheckForShadow();
         AnimateVisual();
+        UpdateWalkSound();
+    }
+
+    private void UpdateWalkSound()
+    {
+        bool walkingOnGround = playerCharacterController.isGrounded &&
+                               playerMoveAmount.sqrMagnitude > 0.01f &&
+                               horizontalVelocity.sqrMagnitude > 0.25f;
+
+        SetWalkSound(walkingOnGround);
+    }
+
+    private void SetWalkSound(bool shouldPlay)
+    {
+        if (walkClip == null)
+        {
+            return;
+        }
+
+        if (shouldPlay && !walkClip.isPlaying)
+        {
+            walkClip.Play();
+        }
+        else if (!shouldPlay && walkClip.isPlaying)
+        {
+            walkClip.Stop();
+        }
     }
 
     private void CreateCharacterEffects()
@@ -440,9 +477,16 @@ public class tpPlayer : MonoBehaviour
         lastObservedHealth = playerHealth;
         if (healthLost <= 0f || damageSmokeParticles == null || smokeParticlesPerDamage <= 0f)
         {
+            if (sizzling.isPlaying)
+            {
+                sizzling.Stop();
+            }
             return;
         }
-
+        if (!sizzling.isPlaying)
+        {
+            sizzling.Play();
+        }
         pendingSmokeParticles += healthLost * smokeParticlesPerDamage;
         int particleCount = Mathf.FloorToInt(pendingSmokeParticles);
         if (particleCount > 0)
@@ -653,6 +697,7 @@ public class tpPlayer : MonoBehaviour
 
         playerHealth = 0f;
         isRespawning = true;
+        SetWalkSound(false);
 
         if (heartbeatSource != null)
         {
@@ -695,7 +740,6 @@ public class tpPlayer : MonoBehaviour
         {
             playerCharacterController.enabled = false;
         }
-
         transform.SetPositionAndRotation(
             respawnCheckpoint.position,
             respawnCheckpoint.rotation);
@@ -710,6 +754,7 @@ public class tpPlayer : MonoBehaviour
             if (sunController != null)
             {
                 sunController.SetCheckpoint(checkpointIndex);
+                sunController.RechargeMana(1e9f);
             }
             else
             {
@@ -951,6 +996,7 @@ public class tpPlayer : MonoBehaviour
 
             if (playerJumpAction.WasPressedThisFrame())
             {
+                jumpClip.Play();
                 jumpStartHeight = transform.position.y;
                 verticalVelocity = Mathf.Max(0f, jumpHeight);
                 jumpCanContinueRising = maxJumpHeight > 0f && verticalVelocity > 0f;
