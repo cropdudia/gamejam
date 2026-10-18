@@ -700,6 +700,29 @@ public class tpPlayer : MonoBehaviour
             respawnCheckpoint.position,
             respawnCheckpoint.rotation);
 
+        if (TryGetCheckpointIndex(respawnCheckpoint, out int checkpointIndex))
+        {
+            if (sunController == null)
+            {
+                sunController = FindAnyObjectByType<SunController>();
+            }
+
+            if (sunController != null)
+            {
+                sunController.SetCheckpoint(checkpointIndex);
+            }
+            else
+            {
+                Debug.LogWarning("Cannot reset sun rotation on respawn: no SunController exists in the scene.", this);
+            }
+        }
+        else
+        {
+            Debug.LogWarning(
+                $"Cannot reset sun rotation on respawn: checkpoint '{respawnCheckpoint.name}' is not named CHECKPOINT 1 through CHECKPOINT 5.",
+                this);
+        }
+
         if (controllerWasEnabled)
         {
             playerCharacterController.enabled = true;
@@ -884,13 +907,22 @@ public class tpPlayer : MonoBehaviour
         Transform previousCheckpoint = respawnCheckpoint;
         respawnCheckpoint = newCheckpoint;
 
+        if (sunController == null)
+        {
+            sunController = FindAnyObjectByType<SunController>();
+        }
+
+        if (sunController != null)
+        {
+            sunController.SetCheckpoint(checkpointIndex);
+        }
+        else
+        {
+            Debug.LogWarning("Cannot set checkpoint sun rotation: no SunController exists in the scene.", this);
+        }
+
         if (checkpointIndex == 1)
         {
-            if (sunController == null)
-            {
-                sunController = FindAnyObjectByType<SunController>();
-            }
-
             if (sunController != null)
             {
                 sunController.SetRotationEnabled(true);

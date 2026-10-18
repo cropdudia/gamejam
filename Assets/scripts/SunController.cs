@@ -8,6 +8,17 @@ public class SunController : MonoBehaviour
     public float rotationSpeed = 30f;
     [SerializeField] private bool rotationEnabled;
 
+    private static readonly Vector2?[] CheckpointRotationOverrides =
+    {
+        null,
+        new Vector2(55.6f, 0f),
+        null,
+        null,
+        null
+    };
+
+    private static readonly Vector2 CheckpointOneRotation = new Vector2(41f, 0f);
+
     private float sunHeight;
     private float sunDirection;
     private InputAction sunUpAction;
@@ -22,8 +33,9 @@ public class SunController : MonoBehaviour
 
     void Awake()
     {
-        sunHeight = transform.eulerAngles.x;
-        sunDirection = transform.eulerAngles.y;
+        sunHeight = CheckpointOneRotation.x;
+        sunDirection = CheckpointOneRotation.y;
+        transform.rotation = Quaternion.Euler(sunHeight, sunDirection, 0f);
         if (inputActions == null)
         {
             Debug.LogError("SunController requires an Input Actions asset.", this);
@@ -60,5 +72,19 @@ public class SunController : MonoBehaviour
     public void SetRotationEnabled(bool enabled)
     {
         rotationEnabled = enabled;
+    }
+
+    public void SetCheckpoint(int checkpointIndex)
+    {
+        if (checkpointIndex < 0 || checkpointIndex >= CheckpointRotationOverrides.Length)
+        {
+            Debug.LogWarning($"Sun rotation is not configured for checkpoint index {checkpointIndex}.", this);
+            return;
+        }
+
+        Vector2 rotation = CheckpointRotationOverrides[checkpointIndex] ?? CheckpointOneRotation;
+        sunHeight = rotation.x;
+        sunDirection = rotation.y;
+        transform.rotation = Quaternion.Euler(sunHeight, sunDirection, 0f);
     }
 }
