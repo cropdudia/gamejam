@@ -21,7 +21,7 @@ public class SunController : MonoBehaviour
         null,
         new Vector2(55.6f, 0f),
         new Vector2(151f, -182f),
-        null,
+        new Vector2(128.1f, -268.4f),
         null
     };
 
@@ -54,6 +54,14 @@ public class SunController : MonoBehaviour
         sunDownAction = inputActions.FindAction("Player/Sun Down");
         sunLeftAction = inputActions.FindAction("Player/Sun Left");
         sunRightAction = inputActions.FindAction("Player/Sun Right");
+
+        SunManaUI manaUI = FindAnyObjectByType<SunManaUI>();
+        if (manaUI == null)
+        {
+            manaUI = gameObject.AddComponent<SunManaUI>();
+        }
+
+        manaUI.SetSunController(this);
     }
 
     void Update()
