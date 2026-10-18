@@ -239,10 +239,10 @@ MonoBehaviour:
   maxWaitTime: 4
   minSightRadius: 8
   maxSightRadius: 16
-  projectilePrefab: {fileID: 0}
+  projectilePrefab: {fileID: 6707176749739344617, guid: 99d0661730ff1bc4ea256bab64a053fd, type: 3}
   firePoint: {fileID: 0}
   reactionDelay: 0.6
-  projectilesPerBurst: 3
+  projectilesPerBurst: 1
   delayBetweenProjectiles: 0.25
   burstCooldown: 3
   platformLayers:
