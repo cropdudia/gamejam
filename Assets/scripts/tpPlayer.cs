@@ -107,6 +107,7 @@ public class tpPlayer : MonoBehaviour
 
     private bool isRespawning;
     private bool checkpointCardActive;
+    private readonly bool[] activatedEnemyCheckpoints = new bool[5];
     private CanvasGroup checkpointCardCanvasGroup;
     private RawImage checkpointCardImage;
 
@@ -258,6 +259,10 @@ public class tpPlayer : MonoBehaviour
 
     private void Start()
     {
+        int startingCheckpointIndex = TryGetCheckpointIndex(respawnCheckpoint, out int checkpointIndex)
+            ? checkpointIndex
+            : 0;
+        InitializeCheckpointEnemies(startingCheckpointIndex);
         StartCoroutine(ShowCheckpointCard(0));
     }
 
@@ -768,6 +773,8 @@ public class tpPlayer : MonoBehaviour
                 this);
         }
 
+        ResetManaPickups();
+
         if (controllerWasEnabled)
         {
             playerCharacterController.enabled = true;
@@ -951,6 +958,8 @@ public class tpPlayer : MonoBehaviour
 
         Transform previousCheckpoint = respawnCheckpoint;
         respawnCheckpoint = newCheckpoint;
+        ResetManaPickups();
+        ActivateEnemiesForCheckpoint(checkpointIndex);
 
         if (sunController == null)
         {
@@ -985,6 +994,52 @@ public class tpPlayer : MonoBehaviour
 
         Debug.Log($"Checkpoint updated: {respawnCheckpoint.name}.", this);
         StartCoroutine(ShowCheckpointCard(checkpointIndex));
+    }
+
+    private static void ResetManaPickups()
+    {
+        ManaPickup[] pickups = FindObjectsByType<ManaPickup>(
+            FindObjectsInactive.Include);
+        foreach (ManaPickup pickup in pickups)
+        {
+            pickup.ResetPickup();
+        }
+    }
+
+    private void InitializeCheckpointEnemies(int checkpointIndex)
+    {
+        tpAI[] enemies = FindObjectsByType<tpAI>(
+            FindObjectsInactive.Include);
+        foreach (tpAI enemy in enemies)
+        {
+            enemy.gameObject.SetActive(enemy.ActivationCheckpoint == checkpointIndex + 1);
+        }
+
+        if (checkpointIndex >= 0 && checkpointIndex < activatedEnemyCheckpoints.Length)
+        {
+            activatedEnemyCheckpoints[checkpointIndex] = true;
+        }
+    }
+
+    private void ActivateEnemiesForCheckpoint(int checkpointIndex)
+    {
+        if (checkpointIndex < 0 ||
+            checkpointIndex >= activatedEnemyCheckpoints.Length ||
+            activatedEnemyCheckpoints[checkpointIndex])
+        {
+            return;
+        }
+
+        activatedEnemyCheckpoints[checkpointIndex] = true;
+        tpAI[] enemies = FindObjectsByType<tpAI>(
+            FindObjectsInactive.Include);
+        foreach (tpAI enemy in enemies)
+        {
+            if (enemy.ActivationCheckpoint == checkpointIndex + 1)
+            {
+                enemy.gameObject.SetActive(true);
+            }
+        }
     }
 
     private void Jump()

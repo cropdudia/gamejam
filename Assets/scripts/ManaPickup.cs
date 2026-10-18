@@ -18,14 +18,17 @@ public class ManaPickup : MonoBehaviour
     [Header("Player")]
     [SerializeField] private GameObject player;
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    private void Awake()
     {
         startPosition = transform.localPosition;
         bobOffset = Random.Range(0f, Mathf.PI * 2f);
+    }
+
+    private void Start()
+    {
         if (sunController == null)
         {
-            sunController = FindFirstObjectByType<SunController>();
+            sunController = FindAnyObjectByType<SunController>();
         }
         if (player == null)
         {
@@ -33,9 +36,13 @@ public class ManaPickup : MonoBehaviour
         }
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Update()
     {
+        if (collected)
+        {
+            return;
+        }
+
         // Spin
         transform.Rotate(Vector3.up, spinDegreesPerSecond * Time.deltaTime, Space.Self);
 
@@ -65,14 +72,17 @@ public class ManaPickup : MonoBehaviour
 
     private void Collect()
     {
-        float duration = 0.0f;
         collected = true;
+        if (pickupSphere != null)
+        {
+            pickupSphere.SetActive(false);
+        }
+
         if (manaPickupSFX != null)
         {
             manaPickupSFX.Play();
-            duration = manaPickupSFX.clip.length;
-            pickupSphere.SetActive(false);
         }
+
         float amount = Random.Range(manaReturnAmountMin, manaReturnAmountMax);
         if (sunController != null)
         {
@@ -82,12 +92,30 @@ public class ManaPickup : MonoBehaviour
         {
             Debug.LogWarning("Sun Controller not assigned to ManaPickup Prefab!");
         }
+    }
 
-        Destroy(gameObject, duration);
+    public void ResetPickup()
+    {
+        if (manaPickupSFX != null)
+        {
+            manaPickupSFX.Stop();
+        }
+
+        collected = false;
+        transform.localPosition = startPosition;
+        if (pickupSphere != null)
+        {
+            pickupSphere.SetActive(true);
+        }
     }
 
     private void OnDrawGizmosSelected()
     {
+        if (pickupSphere == null)
+        {
+            return;
+        }
+
         float pickupRadius = pickupSphere.transform.localScale.x * 0.5f;
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, pickupRadius);
