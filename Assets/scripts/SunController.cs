@@ -12,7 +12,7 @@ public class SunController : MonoBehaviour
     {
         null,
         new Vector2(55.6f, 0f),
-        null,
+        new Vector2(151f, -182f),
         null,
         null
     };
