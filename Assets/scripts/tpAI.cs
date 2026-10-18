@@ -12,6 +12,9 @@ public class tpAI : MonoBehaviour
     [SerializeField] private Light sunLight;        // leave empty to fall back to RenderSettings.sun
     [SerializeField] private LayerMask shadowLayers = ~0;
     [SerializeField] private LayerMask fireLayers;
+    [SerializeField, Min(1)] private int activationCheckpoint = 1;
+
+    public int ActivationCheckpoint => activationCheckpoint;
 
     [Header("Health (inverse of the player)")]
     [SerializeField] private float maxHealth = 50f;
@@ -70,6 +73,7 @@ public class tpAI : MonoBehaviour
 
     private void OnValidate()
     {
+        activationCheckpoint = Mathf.Max(1, activationCheckpoint);
         maxSightRadius = Mathf.Max(minSightRadius, maxSightRadius);
         maxWaitTime = Mathf.Max(minWaitTime, maxWaitTime);
         projectilesPerBurst = Mathf.Max(1, projectilesPerBurst);
@@ -91,7 +95,7 @@ public class tpAI : MonoBehaviour
 
         if (target == null)
         {
-            tpPlayer player = FindFirstObjectByType<tpPlayer>();
+            tpPlayer player = FindAnyObjectByType<tpPlayer>();
             if (player != null)
             {
                 target = player.transform;

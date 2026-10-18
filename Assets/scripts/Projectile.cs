@@ -14,6 +14,7 @@ public class Projectile : MonoBehaviour
 
     [Header("On Hit")]
     [SerializeField] private GameObject hitEffectPrefab; // e.g. the "balls of light" burst
+    [SerializeField, Min(0f)] private float hitEffectLifetime = 5f;
     [SerializeField] private AudioSource hitEffectSound;
     [Header("Projectile Visual")]
     [SerializeField] private GameObject projectileVisual;
@@ -70,7 +71,11 @@ public class Projectile : MonoBehaviour
         if (hitEffectPrefab != null)
         {
             // Face the effect away from the surface we hit
-            Instantiate(hitEffectPrefab, hit.point, Quaternion.LookRotation(hit.normal));
+            GameObject hitEffect = Instantiate(
+                hitEffectPrefab,
+                hit.point,
+                Quaternion.LookRotation(hit.normal));
+            Destroy(hitEffect, hitEffectLifetime);
             if (hitEffectSound != null)
             {
                 hitEffectSound.Play();
